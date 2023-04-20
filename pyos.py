@@ -24,9 +24,11 @@ class os_t:
 		self.cpu.cpu_alive = False
 
 	def run_command(self, command):
-		self.printk('command' + str(command))
 		if command == 'stop':
+			self.terminal.end()
 			self.cpu.cpu_alive = False
+		elif command[:4] == 'run ':
+			self.terminal.console_print("iniciando processo "+ command[4:] +"\n")
 		else:
 			self.terminal.console_print("comando nao reconhecido\n")
 		self.console_str = ""
@@ -52,17 +54,14 @@ class os_t:
 	def handle_interrupt (self, interrupt):
 		if interrupt == pycfg.INTERRUPT_KEYBOARD:
 			self.interrupt_keyboard()
+		elif interrupt == pycfg.INTERRUPT_TIMER:
+			self.printk("interrupcao de timer")
+		elif interrupt == pycfg.INTERRUPT_MEMORY_PROTECTION_FAULT:
+			self.printk("interrupcao de erro")
 		return
-	#chamada de sistema implementar
-	def syscall (self):
-		#self.terminal.app_print(msg)
-		return
-	
 
-#quando digitar qualquer tecla aparece no terminal, quando der backspace retira caractere quando enter mandar o comando
-#implementar um comando de fechar o terminal e outro que chama uma funcao teste para carregar commando
-#printar para console e nao no kprint
+	def syscall (self):
+		self.printk("syscall nao implementado")
+		return
 
 #pra rodar python2.7 pysim.py
-#todo codigo vai aqui
-#console print para print de processos
