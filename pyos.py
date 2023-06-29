@@ -35,10 +35,10 @@ class os_t:
 		self.current_task = None
 		self.next_sched_task = 0
 		self.idle_task = None
+		self.idle_offset = 0
 		self.idle_task = self.load_task("idle.bin")
 		if self.idle_task is None:
 			self.panic("could not load idle.bin task")
-		self.idle_offset = 0
 		
 		self.printk("end load start sched")
 		self.sched(self.idle_task)
@@ -110,13 +110,14 @@ class os_t:
 		if task.state != PYOS_TASK_STATE_READY:
 			self.panic("task "+task.bin_name+" must be in READY state for being scheduled (state = "+str(task.state)+")")
 		
-		# TODO
+		# TODO FEITO
 		# Escrever no processador os registradores de proposito geral salvos na task struct
 		# Escrever no processador o PC salvo na task struct
 		# Atualizar estado do processo
 		# Escrever no processador os registradores que configuram a memoria virtual, salvos na task struct
-		
-		self.cpu.regs = task.regs[:]
+
+		for i in range(0, 7):
+			self.cpu.regs[i] = task.regs[i]
 		self.cpu.reg_pc = task.reg_pc
 		self.cpu.paddr_offset = task.paddr_offset
 		self.cpu.paddr_max = task.paddr_max
@@ -136,7 +137,7 @@ class os_t:
 
 	def allocate_contiguos_physical_memory_to_task (self, words, task):
 		
-		#TODO 
+		#TODO FEITO
 		# verificar se a memoria esta livre antes de alocar
 		# adicionar uma variavel de offset atual ler se a memoria esta livre e se estiver usa
 		# if self.memory.read(0) == 0
@@ -176,10 +177,12 @@ class os_t:
 		elif cmd == "tasks":
 			self.task_table_print()
 		elif cmd == "test":
-			# self.printk("idle_offset "+str(self.idle_offset))
-			# self.printk("cpu_offset "+str(self.cpu.paddr_max))
+			self.printk("idle_offset "+str(self.idle_offset))
+			self.printk("cpu_offset "+str(self.cpu.paddr_max))
 			self.printk("idle_task "+str(self.idle_task.bin_name))
 			self.printk("idle_task state "+str(self.idle_task.state))
+			self.printk("self.current_task name "+str(self.current_task.bin_name))
+			self.printk("self.current_task state "+str(self.current_task.state))
 			self.terminal.console_print("\n")
 		elif cmd[:3] == "run":
 				# se a task for o idle.bin the_task == none
@@ -211,17 +214,22 @@ class os_t:
 
 	def un_sched (self, task):
 		if task.state != PYOS_TASK_STATE_EXECUTING:
-		#TODOO AQUI QUEBRA QUANDO CORRE UM NOVO PROCESSO
-			self.printk('LUGAR DE QUEBRA')
-			# self.panic("task "+task.bin_name+" must be in EXECUTING state for being scheduled (state = "+str(task.state)+")")
+			self.panic("task "+task.bin_name+" must be in EXECUTING state for being scheduled (state = "+str(task.state)+")")
 		if task is not self.current_task:
 			self.panic("task "+task.bin_name+" must be the current_task for being scheduled (current_task = "+self.current_task.bin_name+")")
 
-		# TODO
+		# TODO FEITO
 		# Salvar na task struct
 		# - registradores de proposito geral
 		# - PC
 		# Atualizar o estado do processo
+		#  salvar na OS os dados da task/cpu
+
+		for i in range(0, 7):
+			task.regs[i] = self.cpu.get_reg(i)
+		task.reg_pc = self.cpu.reg_pc
+
+		task.state = PYOS_TASK_STATE_READY
 
 		self.current_task = None
 		self.printk("unscheduling task "+task.bin_name)
@@ -260,15 +268,28 @@ class os_t:
 	def syscall (self):
 		service = self.cpu.get_reg(0)
 		task = self.current_task
-		# self.printk("syscall ")
-		# self.printk("syscall task "+task)
-		# self.printk("syscall service "+service)
 
 		if service == 0:
-			self.printk("app "+self.current_task.bin_name+" request finish")
+			self.printk("app "+task.bin_name+" request finish")
 			self.un_sched(task)
 			self.terminate_unsched_task(task)
 			self.sched(self.idle_task)
+		if service == 1:
+			# ver memory load do pyarch memory_load linha 278
+			self.printk("app "+self.current_task.bin_name+" print string")
+			msg0 = self.cpu.memory_load(self.cpu.get_reg(0))
+			msg1 = self.cpu.memory_load(self.cpu.get_reg(1))
+			self.terminal.app_print("task "+task.bin_name+"\n")
+			self.terminal.app_print("print: " + str(msg0) + "\n")
+			self.terminal.app_print("print: " + str(msg1) + "\n")
+		if service == 2:
+			self.printk("app "+self.current_task.bin_name+" print new line")
+			msg = 'test'
+			self.terminal.app_print("\n")
+		if service == 3:
+			self.printk("app "+self.current_task.bin_name+" print int")
+			msg = 'test'
+			self.terminal.app_print("print: " + msg + "\n")
 
 		# TODO
 		# Implementar aqui as outras chamadas de sistema
