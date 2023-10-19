@@ -31,10 +31,11 @@ class os_t:
 
 		self.the_task = None
 		self.next_task_id = 0
-
+		self.tasks = []
 		self.current_task = None
 		self.next_sched_task = 0
 		self.idle_task = None
+		#ao inves de manter o idel offset mantem o offet do ultimo
 		self.idle_offset = 0
 		self.idle_task = self.load_task("idle.bin")
 		if self.idle_task is None:
@@ -76,7 +77,7 @@ class os_t:
 		task.tid = self.next_task_id
 		self.next_task_id = self.next_task_id + 1
 
-		#self.tasks.append( task )
+		self.tasks.append( task )
 		return task
 
 	def read_binary_to_memory (self, paddr_offset, paddr_max, bin_name):
@@ -109,12 +110,6 @@ class os_t:
 			self.panic("current_task must be None when scheduling a new one (current_task="+self.current_task.bin_name+")")
 		if task.state != PYOS_TASK_STATE_READY:
 			self.panic("task "+task.bin_name+" must be in READY state for being scheduled (state = "+str(task.state)+")")
-		
-		# TODO FEITO
-		# Escrever no processador os registradores de proposito geral salvos na task struct
-		# Escrever no processador o PC salvo na task struct
-		# Atualizar estado do processo
-		# Escrever no processador os registradores que configuram a memoria virtual, salvos na task struct
 
 		for i in range(0, 7):
 			self.cpu.regs[i] = task.regs[i]
@@ -136,18 +131,13 @@ class os_t:
 	# -1, -1 if cannot find
 
 	def allocate_contiguos_physical_memory_to_task (self, words, task):
-		
-		#TODO FEITO
-		# verificar se a memoria esta livre antes de alocar
-		# adicionar uma variavel de offset atual ler se a memoria esta livre e se estiver usa
-		# if self.memory.read(0) == 0
 		self.printk("memory "+str(self.memory.read(0)))
 		self.printk("task size "+str(words))
-		if task.bin_name == "idle.bin":
-			self.idle_offset = words
-			return 0, words
-		else: 
-			return self.idle_offset+1, words+self.idle_offset+1
+		maxOffset = 0
+		for task in self.tasks:
+			if task.paddr_max > maxOffset:
+				maxOffset = task.paddr_max
+		return maxOffset+1, words+maxOffset+1
 
 	def printk(self, msg):
 		self.terminal.kernel_print("kernel: " + msg + "\n")
@@ -156,7 +146,6 @@ class os_t:
 		self.terminal.end()
 		self.terminal.dprint("kernel panic: " + msg)
 		self.cpu.cpu_alive = False
-		#cpu.cpu_alive = False
 
 	def interrupt_keyboard (self):
 		key = self.terminal.get_key_buffer()
@@ -185,21 +174,39 @@ class os_t:
 			self.printk("self.current_task state "+str(self.current_task.state))
 			self.terminal.console_print("\n")
 		elif cmd[:3] == "run":
-				# se a task for o idle.bin the_task == none
-			if (self.the_task is not None):
-				self.terminal.console_print("error: binary " + self.the_task.bin_name + " is already running\n")
-			else:
-				bin_name = cmd[4:]
-				self.terminal.console_print("\rrun binary " + bin_name + "\n")
-				task = self.load_task(bin_name)
-				if task is not None:
-					self.the_task = task;
-					self.un_sched(self.idle_task)
-					self.sched(self.the_task)
-				else:
-					self.terminal.console_print("error: binary " + bin_name + " not found\n")
+			bin_name = cmd[4:]
+			self.terminal.console_print("\rrun binary " + bin_name + "\n")
+			task = self.load_task(bin_name)
+			if task is None:
+				self.terminal.console_print("error: binary " + bin_name + " not found\n")
+			# if task is not None:
+			# 	if self.the_task is None:
+			# 		self.un_sched(self.idle_task)
+			# 		self.the_task = task;
+			# 		self.sched(self.the_task)
+			# 	else:
+			# 		self.printk('test thetask')
+			# 		self.un_sched(self.the_task)
+			# else:
+			# 	self.terminal.console_print("error: binary " + bin_name + " not found\n")
 		else:
 			self.terminal.console_print("\rinvalid cmd " + cmd + "\n")
+
+	def task_table_print(self):
+		self.printk('test')
+		for task in self.tasks:
+			self.printk(
+        #"regs: " + task.regs + " " + 
+				"reg_pc: " + str(task.reg_pc)+ " " + 
+				#"stack: " +task.stack+ " " + 
+        "paddr_offset: " + str(task.paddr_offset)+ " " + 
+				"paddr_max: " + str(task.paddr_max)+ " " + 
+        "bin_name: " + str(task.bin_name)+ " " + 
+				"bin_size: " + str(task.bin_size)+ " " + 
+        "tid: " + str(task.tid)+ " " + 
+				"state: " + str(task.state)
+    )
+	
 
 	def terminate_unsched_task (self, task):
 		if task.state == PYOS_TASK_STATE_EXECUTING:
@@ -210,6 +217,7 @@ class os_t:
 			self.panic("task being terminated should be the_task")
 		
 		self.the_task = None
+		self.tasks.remove(task)
 		self.printk("task "+task.bin_name+" terminated")
 
 	def un_sched (self, task):
@@ -217,14 +225,6 @@ class os_t:
 			self.panic("task "+task.bin_name+" must be in EXECUTING state for being scheduled (state = "+str(task.state)+")")
 		if task is not self.current_task:
 			self.panic("task "+task.bin_name+" must be the current_task for being scheduled (current_task = "+self.current_task.bin_name+")")
-
-		# TODO FEITO
-		# Salvar na task struct
-		# - registradores de proposito geral
-		# - PC
-		# Atualizar o estado do processo
-		#  salvar na OS os dados da task/cpu
-
 		for i in range(0, 7):
 			task.regs[i] = self.cpu.get_reg(i)
 		task.reg_pc = self.cpu.reg_pc
@@ -250,10 +250,39 @@ class os_t:
 		self.un_sched(task)
 		self.terminate_unsched_task(task)
 		self.sched(self.idle_task)
+
 	def interrupt_timer (self):
-	# TODO descomentar TIMER INTERRUPT 
-		# self.printk("timer interrupt NOT IMPLEMENTED")
-		return
+		self.printk("timer")
+		self.escalate_tasks()
+
+	def escalate_tasks (self):
+		# TEST THIS
+		if len(self.tasks) == 1:
+			return
+		if self.current_task == self.idle_task:
+			self.un_sched(self.idle_task)
+			self.sched(self.tasks[1])
+			return
+		if len(self.tasks) > 2:
+			self.printk("switching tasks")
+			# troca a task para a proxima task no array
+			# se for a ultima task no array troca pra primeira
+			currentTaskIndex = 0
+			nextTaskIndex = 0
+			for i in range(0, len(self.tasks)):
+				if self.tasks[i].tid == self.current_task.tid:
+					currentTaskIndex = i
+					if i == len(self.tasks)-1:
+						self.printk('first task')
+						nextTaskIndex = 1
+					else:
+						self.printk('next task')
+						nextTaskIndex = i+1
+			self.the_task = self.tasks[nextTaskIndex];
+			self.un_sched(self.tasks[currentTaskIndex])
+			self.sched(self.tasks[nextTaskIndex])
+
+		
 
 	def handle_interrupt (self, interrupt):
 		if interrupt == pycfg.INTERRUPT_MEMORY_PROTECTION_FAULT:
@@ -274,35 +303,28 @@ class os_t:
 			self.un_sched(task)
 			self.terminate_unsched_task(task)
 			self.sched(self.idle_task)
-		if service == 1:
-			# ver memory load do pyarch memory_load linha 278
-			self.printk("app "+self.current_task.bin_name+" print string")
+		elif service == 1:
+			# self.printk("app "+self.current_task.bin_name+" print string")
 			msg0 = self.cpu.memory_load(self.cpu.get_reg(0))
 			msg1 = self.cpu.memory_load(self.cpu.get_reg(1))
 			self.terminal.app_print("task "+task.bin_name+"\n")
 			self.terminal.app_print("print: " + str(msg0) + "\n")
 			self.terminal.app_print("print: " + str(msg1) + "\n")
-		if service == 2:
-			self.printk("app "+self.current_task.bin_name+" print new line")
+		elif service == 2:
+			# self.printk("app "+self.current_task.bin_name+" print new line")
 			msg = 'test'
 			self.terminal.app_print("\n")
-		if service == 3:
-			self.printk("app "+self.current_task.bin_name+" print int")
+		elif service == 3:
+			# self.printk("app "+self.current_task.bin_name+" print int")
 			msg = 'test'
 			self.terminal.app_print("print: " + msg + "\n")
-
-		# TODO
-		# Implementar aqui as outras chamadas de sistema
-		
 		else:
 			self.handle_gpf("invalid syscall "+str(service))
 
 
 #pra rodar python2.7 pysim.py
-#implementar modelo base deslocamento
-#implementar interrupcao:
-#falha de memoria - mata o processo
-#relogio - n faz nada
+#array de tarefas FEITO
+#remover tarefas do array quando terminar FEITO
+#gereciador ocupar multiplas tarefas ???
+#trocar tarefas com o timer FEITO
 
-#pegar o assembler compilar os codigos e correr os codigos aqui
-#o assembler esta no github
