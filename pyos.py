@@ -29,14 +29,11 @@ class os_t:
 
 		self.console_str = ""
 
-		self.the_task = None
 		self.next_task_id = 0
 		self.tasks = []
 		self.current_task = None
 		self.next_sched_task = 0
 		self.idle_task = None
-		#ao inves de manter o idel offset mantem o offet do ultimo
-		self.idle_offset = 0
 		self.idle_task = self.load_task("idle.bin")
 		if self.idle_task is None:
 			self.panic("could not load idle.bin task")
@@ -121,7 +118,7 @@ class os_t:
 
 		self.current_task = task
 		self.printk("scheduling task "+task.bin_name)
-		self.printk("task state "+str(task.state))
+		# self.printk("task state "+str(task.state))
 
 	def get_task_amount_of_memory (self, task):
 		return task.paddr_max - task.paddr_offset + 1
@@ -165,30 +162,26 @@ class os_t:
 			self.cpu.cpu_alive = False
 		elif cmd == "tasks":
 			self.task_table_print()
-		elif cmd == "test":
-			self.printk("idle_offset "+str(self.idle_offset))
-			self.printk("cpu_offset "+str(self.cpu.paddr_max))
-			self.printk("idle_task "+str(self.idle_task.bin_name))
-			self.printk("idle_task state "+str(self.idle_task.state))
-			self.printk("self.current_task name "+str(self.current_task.bin_name))
-			self.printk("self.current_task state "+str(self.current_task.state))
-			self.terminal.console_print("\n")
 		elif cmd[:3] == "run":
 			bin_name = cmd[4:]
 			self.terminal.console_print("\rrun binary " + bin_name + "\n")
 			task = self.load_task(bin_name)
 			if task is None:
 				self.terminal.console_print("error: binary " + bin_name + " not found\n")
-			# if task is not None:
-			# 	if self.the_task is None:
-			# 		self.un_sched(self.idle_task)
-			# 		self.the_task = task;
-			# 		self.sched(self.the_task)
-			# 	else:
-			# 		self.printk('test thetask')
-			# 		self.un_sched(self.the_task)
-			# else:
-			# 	self.terminal.console_print("error: binary " + bin_name + " not found\n")
+			else:
+				self.un_sched(self.current_task)
+				self.sched(task)
+		elif cmd[:4] == "kill":
+			bin_name = cmd[5:]
+			self.terminal.console_print("\rkill task " + bin_name + "\n")
+			terminatedTask = None
+			for task in self.tasks:
+				if(task.bin_name == bin_name):
+					terminatedTask = task
+			if task is None:
+				self.terminal.console_print("error: task " + bin_name + " not found\n")
+			else:
+				self.killTask(terminatedTask)
 		else:
 			self.terminal.console_print("\rinvalid cmd " + cmd + "\n")
 
@@ -207,16 +200,18 @@ class os_t:
 				"state: " + str(task.state)
     )
 	
+	def killTask(self, task):
+		if task == self.current_task:
+			self.un_sched(task)
+		self.sched(self.idle_task)
+		self.tasks.remove(task)
 
 	def terminate_unsched_task (self, task):
 		if task.state == PYOS_TASK_STATE_EXECUTING:
 			self.panic("impossible to terminate a task that is currently running")
 		if task == self.idle_task:
 			self.panic("impossible to terminate idle task")
-		if task is not self.the_task:
-			self.panic("task being terminated should be the_task")
 		
-		self.the_task = None
 		self.tasks.remove(task)
 		self.printk("task "+task.bin_name+" terminated")
 
@@ -252,11 +247,10 @@ class os_t:
 		self.sched(self.idle_task)
 
 	def interrupt_timer (self):
-		self.printk("timer")
+		# self.printk("timer")
 		self.escalate_tasks()
 
 	def escalate_tasks (self):
-		# TEST THIS
 		if len(self.tasks) == 1:
 			return
 		if self.current_task == self.idle_task:
@@ -273,12 +267,10 @@ class os_t:
 				if self.tasks[i].tid == self.current_task.tid:
 					currentTaskIndex = i
 					if i == len(self.tasks)-1:
-						self.printk('first task')
 						nextTaskIndex = 1
 					else:
-						self.printk('next task')
 						nextTaskIndex = i+1
-			self.the_task = self.tasks[nextTaskIndex];
+					break
 			self.un_sched(self.tasks[currentTaskIndex])
 			self.sched(self.tasks[nextTaskIndex])
 
